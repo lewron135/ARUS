@@ -1,4 +1,5 @@
 import './App.css'
+import MapView from './components/MapView.jsx'
 
 function App() {
   return (
@@ -7,7 +8,9 @@ function App() {
         <h1>ARUS</h1>
         <span className="tagline">Flood-aware pedestrian routes for Jakarta</span>
       </header>
-      <div className="map-area" />
+      <div className="map-area">
+        <MapView />
+      </div>
     </div>
   )
 }
