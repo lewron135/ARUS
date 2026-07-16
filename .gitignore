@@ -13,6 +13,7 @@ dist-ssr
 *.local
 
 .superpowers/
+references/
 
 # Editor directories and files
 .vscode/*
