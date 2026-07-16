@@ -1,5 +1,5 @@
 :root {
-  color-scheme: dark;
+  color-scheme: light;
   font: 16px/1.45 system-ui, 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -18,6 +18,6 @@ body,
 }
 
 body {
-  background: #1a1209;
-  color: #e8e1d4;
+  background: #f0f4f2;
+  color: #1a1a1a;
 }
