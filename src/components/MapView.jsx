@@ -1,4 +1,4 @@
-import { MapContainer, TileLayer, GeoJSON } from 'react-leaflet'
+import { MapContainer, TileLayer, GeoJSON, Marker, useMapEvents } from 'react-leaflet'
 
 export const JAKARTA_CENTER = [-6.2088, 106.8456]
 
@@ -9,7 +9,16 @@ const floodZoneStyle = () => ({
   fillOpacity: 0.35,
 })
 
-function MapView({ floodZones }) {
+function ClickHandler({ onMapClick }) {
+  useMapEvents({
+    click(e) {
+      onMapClick({ lat: e.latlng.lat, lng: e.latlng.lng })
+    },
+  })
+  return null
+}
+
+function MapView({ floodZones, startPoint, endPoint, onMapClick }) {
   return (
     <MapContainer
       center={JAKARTA_CENTER}
@@ -27,6 +36,9 @@ function MapView({ floodZones }) {
           style={floodZoneStyle}
         />
       )}
+      {startPoint && <Marker position={[startPoint.lat, startPoint.lng]} />}
+      {endPoint && <Marker position={[endPoint.lat, endPoint.lng]} />}
+      <ClickHandler onMapClick={onMapClick} />
     </MapContainer>
   )
 }

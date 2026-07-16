@@ -30,3 +30,45 @@
   flex: 1;
   position: relative;
 }
+
+.control-bar {
+  padding: 10px 20px;
+  border-bottom: 1px solid rgba(232, 225, 212, 0.12);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+}
+
+.control-hint {
+  font-size: 13px;
+  color: rgba(232, 225, 212, 0.7);
+  flex: 1;
+}
+
+.control-bar button {
+  font: inherit;
+  font-size: 14px;
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+}
+
+.control-bar button[type='button']:not(.reset-button) {
+  background: #00e5a0;
+  color: #0a1410;
+  font-weight: 600;
+}
+
+.control-bar button:disabled {
+  background: rgba(232, 225, 212, 0.15);
+  color: rgba(232, 225, 212, 0.4);
+  cursor: not-allowed;
+}
+
+.reset-button {
+  background: transparent;
+  color: rgba(232, 225, 212, 0.7);
+  border: 1px solid rgba(232, 225, 212, 0.25) !important;
+}
