@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import * as turf from '@turf/turf'
 import './App.css'
-import MapView from './components/MapView.jsx'
+import MapView, { JAKARTA_CENTER, PinPickerMap } from './components/MapView.jsx'
 import { getFloodZones } from './api/floodApi.js'
 import { getRoute } from './api/routeApi.js'
 import { findSafeRoute } from './lib/safeRoute.js'
 
-const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search'
+const NOMINATIM_SEARCH_URL = 'https://nominatim.openstreetmap.org/search'
+const NOMINATIM_REVERSE_URL = 'https://nominatim.openstreetmap.org/reverse'
 const WALK_SPEED_KMH = 20
+const JAKARTA_CENTER_POINT = { lat: JAKARTA_CENTER[0], lng: JAKARTA_CENTER[1] }
 
 function formatDistance(geometry) {
   const km = turf.length(turf.feature(geometry), { units: 'kilometers' })
@@ -39,7 +41,7 @@ function useGeocodeSuggestions(query) {
       return
     }
     const timer = setTimeout(() => {
-      const url = `${NOMINATIM_URL}?q=${encodeURIComponent(query)}&format=json&limit=5&countrycodes=id`
+      const url = `${NOMINATIM_SEARCH_URL}?q=${encodeURIComponent(query)}&format=json&limit=5&countrycodes=id`
       fetch(url, { headers: { Accept: 'application/json' } })
         .then((res) => (res.ok ? res.json() : []))
         .then((data) => setResults(Array.isArray(data) ? data : []))
@@ -49,6 +51,18 @@ function useGeocodeSuggestions(query) {
   }, [query])
 
   return results
+}
+
+async function reverseGeocode(point) {
+  const url = `${NOMINATIM_REVERSE_URL}?lat=${point.lat}&lon=${point.lng}&format=json`
+  try {
+    const res = await fetch(url, { headers: { Accept: 'application/json' } })
+    if (!res.ok) return null
+    const data = await res.json()
+    return data?.display_name ? shortName(data.display_name) : null
+  } catch {
+    return null
+  }
 }
 
 function CityStatusCard({ floodZones }) {
@@ -87,30 +101,134 @@ function CityStatusCard({ floodZones }) {
   )
 }
 
-function LocationInput({ icon, placeholder, text, onChange, suggestions, onSelect, onFocus, onBlur }) {
+function PinMarkerIcon({ variant }) {
   return (
-    <div className="location-input-row">
-      {icon}
-      <input
-        type="text"
-        className="location-input"
-        placeholder={placeholder}
-        value={text}
-        onChange={(e) => onChange(e.target.value)}
-        onFocus={onFocus}
-        onBlur={onBlur}
+    <svg width="38" height="50" viewBox="0 0 38 50" fill="none">
+      <path
+        d="M19 1C9.6 1 2 8.6 2 18c0 12.4 17 30 17 30s17-17.6 17-30c0-9.4-7.6-17-17-17z"
+        fill={variant === 'start' ? '#00E5A0' : '#FF4444'}
+        stroke="#fff"
+        strokeWidth="2"
       />
-      {suggestions.length > 0 && (
-        <ul className="location-suggestions">
-          {suggestions.map((s) => (
-            <li key={`${s.lat}-${s.lon}`}>
-              <button type="button" onMouseDown={() => onSelect(s)}>
-                {s.display_name}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+      <circle cx="19" cy="18" r="6.5" fill="#fff" />
+    </svg>
+  )
+}
+
+function PinPickerScreen({ target, floodZones, initialPoint, initialAddress, defaultCenter, onConfirm, onBack }) {
+  const seedPoint = initialPoint ?? defaultCenter ?? JAKARTA_CENTER_POINT
+  const [query, setQuery] = useState('')
+  const [pinPoint, setPinPoint] = useState(seedPoint)
+  const [address, setAddress] = useState(initialAddress || '')
+  const [isResolving, setIsResolving] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
+  const [flyTarget, setFlyTarget] = useState(null)
+  const resolveTimer = useRef(null)
+  const requestToken = useRef(0)
+
+  const suggestions = useGeocodeSuggestions(query)
+
+  function scheduleReverseGeocode(point) {
+    clearTimeout(resolveTimer.current)
+    setIsResolving(true)
+    const token = ++requestToken.current
+    resolveTimer.current = setTimeout(() => {
+      reverseGeocode(point).then((label) => {
+        if (requestToken.current !== token) return
+        setAddress(label ?? 'Unknown location')
+        setIsResolving(false)
+      })
+    }, 500)
+  }
+
+  useEffect(() => {
+    if (!initialAddress) scheduleReverseGeocode(seedPoint)
+    return () => clearTimeout(resolveTimer.current)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  function handleDragStart() {
+    setIsDragging(true)
+  }
+
+  function handleCenterChange(point) {
+    setIsDragging(false)
+    setPinPoint(point)
+    scheduleReverseGeocode(point)
+  }
+
+  function handleSelectSuggestion(result) {
+    const point = { lat: Number(result.lat), lng: Number(result.lon) }
+    setPinPoint(point)
+    setAddress(shortName(result.display_name))
+    setIsResolving(false)
+    setQuery('')
+    setFlyTarget(point)
+  }
+
+  function handleConfirm() {
+    if (!pinPoint || isResolving) return
+    onConfirm(pinPoint, address || 'Selected location')
+  }
+
+  return (
+    <div className="screen pin-screen">
+      <div className="map-canvas">
+        <PinPickerMap
+          floodZones={floodZones}
+          initialCenter={[seedPoint.lat, seedPoint.lng]}
+          flyToTarget={flyTarget}
+          onDragStart={handleDragStart}
+          onCenterChange={handleCenterChange}
+        />
+      </div>
+
+      <div className={`pin-marker${isDragging ? ' pin-marker--dragging' : ''}`}>
+        <PinMarkerIcon variant={target} />
+      </div>
+      <div className={`pin-marker-shadow${isDragging ? ' pin-marker-shadow--dragging' : ''}`} />
+
+      <button type="button" className="back-fab" onClick={onBack} aria-label="Back">
+        ←
+      </button>
+
+      <div className="pin-search-wrap">
+        <div className="pin-search-card">
+          <input
+            type="text"
+            className="pin-search-input"
+            placeholder={target === 'start' ? 'Search start location' : 'Search destination'}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          {suggestions.length > 0 && (
+            <ul className="location-suggestions">
+              {suggestions.map((s) => (
+                <li key={`${s.lat}-${s.lon}`}>
+                  <button type="button" onMouseDown={() => handleSelectSuggestion(s)}>
+                    {s.display_name}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+
+      <div className="pin-bottom">
+        <span className="pin-bottom-label">{target === 'start' ? 'TITIK AWAL' : 'TITIK TUJUAN'}</span>
+        <span className="pin-bottom-address">
+          {isResolving ? 'Detecting address…' : address || 'Drag the map to pin your location'}
+        </span>
+        <button
+          type="button"
+          className="scan-button pin-confirm-button"
+          disabled={!pinPoint || isResolving}
+          onClick={handleConfirm}
+        >
+          Confirm Location
+        </button>
+      </div>
     </div>
   )
 }
@@ -119,14 +237,8 @@ function HomeScreen({
   floodZones,
   startText,
   endText,
-  onStartChange,
-  onEndChange,
-  onSelectStart,
-  onSelectEnd,
-  startSuggestions,
-  endSuggestions,
-  onFocusField,
-  onBlurField,
+  onOpenStartPicker,
+  onOpenEndPicker,
   canScan,
   isLoading,
   routeError,
@@ -142,27 +254,19 @@ function HomeScreen({
       <CityStatusCard floodZones={floodZones} />
 
       <div className="input-card">
-        <LocationInput
-          icon={<span className="input-icon input-icon--start" />}
-          placeholder="Start, e.g. Cipinang Jaya, Jatinegara"
-          text={startText}
-          onChange={onStartChange}
-          suggestions={startSuggestions}
-          onSelect={onSelectStart}
-          onFocus={() => onFocusField('start')}
-          onBlur={onBlurField}
-        />
+        <button type="button" className="location-row" onClick={onOpenStartPicker}>
+          <span className="input-icon input-icon--start" />
+          <span className={`location-row-text${startText ? '' : ' location-row-text--placeholder'}`}>
+            {startText || 'Start, e.g. Cipinang Jaya, Jatinegara'}
+          </span>
+        </button>
         <div className="input-divider" />
-        <LocationInput
-          icon={<span className="input-icon input-icon--end" />}
-          placeholder="Destination, e.g. Cipinang Muara Raya"
-          text={endText}
-          onChange={onEndChange}
-          suggestions={endSuggestions}
-          onSelect={onSelectEnd}
-          onFocus={() => onFocusField('end')}
-          onBlur={onBlurField}
-        />
+        <button type="button" className="location-row" onClick={onOpenEndPicker}>
+          <span className="input-icon input-icon--end" />
+          <span className={`location-row-text${endText ? '' : ' location-row-text--placeholder'}`}>
+            {endText || 'Destination, e.g. Cipinang Muara Raya'}
+          </span>
+        </button>
       </div>
 
       {routeError && <span className="control-error">{routeError}</span>}
@@ -210,6 +314,7 @@ function MapScreen({
   noSafeRouteFound,
   destinationName,
   anomalyCount,
+  isLoading,
   onBack,
   onStartNav,
 }) {
@@ -243,6 +348,13 @@ function MapScreen({
           {anomalyCount} ANOMALY DETECTED
         </span>
       </div>
+
+      {!primaryRoute && isLoading && (
+        <div className="result-sheet">
+          <span className="result-label">SCANNING</span>
+          <span className="result-destination">Checking flood zones along the route…</span>
+        </div>
+      )}
 
       {primaryRoute && (
         <div className="result-sheet">
@@ -388,69 +500,75 @@ function App() {
   const [endPoint, setEndPoint] = useState(null)
   const [startText, setStartText] = useState('')
   const [endText, setEndText] = useState('')
-  const [activeField, setActiveField] = useState(null)
   const [normalRoute, setNormalRoute] = useState(null)
   const [safeRoute, setSafeRoute] = useState(null)
   const [noSafeRouteFound, setNoSafeRouteFound] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [routeError, setRouteError] = useState(null)
   const [navigationMode, setNavigationMode] = useState('home')
-  const blurTimer = useRef(null)
-
-  const startSuggestions = useGeocodeSuggestions(activeField === 'start' ? startText : '')
-  const endSuggestions = useGeocodeSuggestions(activeField === 'end' ? endText : '')
 
   useEffect(() => {
     getFloodZones().then(setFloodZones)
   }, [])
 
-  function handleFocusField(field) {
-    clearTimeout(blurTimer.current)
-    setActiveField(field)
-  }
-
-  function handleBlurField() {
-    blurTimer.current = setTimeout(() => setActiveField(null), 120)
-  }
-
-  function handleStartChange(value) {
-    setStartText(value)
-    setStartPoint(null)
-  }
-
-  function handleEndChange(value) {
-    setEndText(value)
-    setEndPoint(null)
-  }
-
-  function handleSelectStart(result) {
-    setStartPoint({ lat: Number(result.lat), lng: Number(result.lon) })
-    setStartText(shortName(result.display_name))
-    setActiveField(null)
-  }
-
-  function handleSelectEnd(result) {
-    setEndPoint({ lat: Number(result.lat), lng: Number(result.lon) })
-    setEndText(shortName(result.display_name))
-    setActiveField(null)
-  }
-
-  async function handleScan() {
+  async function runScan(start, end) {
     setIsLoading(true)
     setRouteError(null)
     setNoSafeRouteFound(false)
+    setNormalRoute(null)
+    setSafeRoute(null)
     try {
-      const normal = await getRoute([startPoint, endPoint])
+      const normal = await getRoute([start, end])
       setNormalRoute(normal)
 
-      const safe = await findSafeRoute(startPoint, endPoint, normal, floodZones)
+      const safe = await findSafeRoute(start, end, normal, floodZones)
       setSafeRoute(safe)
       setNoSafeRouteFound(safe === null)
-      setNavigationMode('map')
     } catch (err) {
       setRouteError(err.message)
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  function handleScan() {
+    setNavigationMode('map')
+    runScan(startPoint, endPoint)
+  }
+
+  function handleOpenStartPicker() {
+    setNavigationMode('pin-start')
+  }
+
+  function handleOpenEndPicker() {
+    setNavigationMode('pin-end')
+  }
+
+  function handlePinBack() {
+    setNavigationMode('home')
+  }
+
+  // Confirming a pin auto-chains to the other pin picker when it's still
+  // unset, or straight to results once both points are known (Gojek-style
+  // pickup -> destination -> route flow) — this fires whichever picker was
+  // just confirmed, including re-edits of an already-complete pair.
+  function handlePinConfirm(point, address) {
+    const wasStart = navigationMode === 'pin-start'
+    const otherPoint = wasStart ? endPoint : startPoint
+
+    if (wasStart) {
+      setStartPoint(point)
+      setStartText(address)
+    } else {
+      setEndPoint(point)
+      setEndText(address)
+    }
+
+    if (otherPoint) {
+      setNavigationMode('map')
+      runScan(wasStart ? point : startPoint, wasStart ? otherPoint : point)
+    } else {
+      setNavigationMode(wasStart ? 'pin-end' : 'pin-start')
     }
   }
 
@@ -481,18 +599,36 @@ function App() {
             floodZones={floodZones}
             startText={startText}
             endText={endText}
-            onStartChange={handleStartChange}
-            onEndChange={handleEndChange}
-            onSelectStart={handleSelectStart}
-            onSelectEnd={handleSelectEnd}
-            startSuggestions={startSuggestions}
-            endSuggestions={endSuggestions}
-            onFocusField={handleFocusField}
-            onBlurField={handleBlurField}
+            onOpenStartPicker={handleOpenStartPicker}
+            onOpenEndPicker={handleOpenEndPicker}
             canScan={Boolean(startPoint && endPoint)}
             isLoading={isLoading}
             routeError={routeError}
             onScan={handleScan}
+          />
+        )}
+
+        {navigationMode === 'pin-start' && (
+          <PinPickerScreen
+            target="start"
+            floodZones={floodZones}
+            initialPoint={startPoint}
+            initialAddress={startText}
+            defaultCenter={startPoint}
+            onConfirm={handlePinConfirm}
+            onBack={handlePinBack}
+          />
+        )}
+
+        {navigationMode === 'pin-end' && (
+          <PinPickerScreen
+            target="end"
+            floodZones={floodZones}
+            initialPoint={endPoint}
+            initialAddress={endText}
+            defaultCenter={endPoint ?? startPoint}
+            onConfirm={handlePinConfirm}
+            onBack={handlePinBack}
           />
         )}
 
@@ -506,6 +642,7 @@ function App() {
             noSafeRouteFound={noSafeRouteFound}
             destinationName={endText}
             anomalyCount={anomalyCount}
+            isLoading={isLoading}
             onBack={handleBackToHome}
             onStartNav={handleStartNav}
           />

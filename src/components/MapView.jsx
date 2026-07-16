@@ -54,6 +54,36 @@ function toLatLngs(lineGeometry) {
   return lineGeometry.coordinates.map(([lng, lat]) => [lat, lng])
 }
 
+function FloodZoneLayers({ floodZones }) {
+  if (!floodZones) return null
+
+  return floodZones.features.map((zone, i) => {
+    const { level, depth } = severityLabel(zone.properties?.state ?? 1)
+    const { center, radiusMeters } = zoneCenterAndRadius(zone)
+    return (
+      <Fragment key={`${floodZones.features.length}-${i}`}>
+        {RADAR_RINGS.map((ring) => (
+          <Circle
+            key={ring.scale}
+            center={center}
+            radius={radiusMeters * ring.scale}
+            pathOptions={{ stroke: false, fillColor: '#FF4444', fillOpacity: ring.opacity }}
+          />
+        ))}
+        <Marker position={center} icon={radarPingIcon} />
+        <GeoJSON data={zone} style={{ stroke: false, fillOpacity: 0 }}>
+          <Tooltip permanent direction="top" className="arus-flood-tooltip" offset={[0, -6]}>
+            <span className="arus-flood-tooltip-inner">
+              LVL: {level}
+              <br />({depth})
+            </span>
+          </Tooltip>
+        </GeoJSON>
+      </Fragment>
+    )
+  })
+}
+
 function ClickHandler({ onMapClick }) {
   useMapEvents({
     click(e) {
@@ -76,8 +106,37 @@ function FitBounds({ startPoint, endPoint, normalRoute, safeRoute, topPadding, b
     map.fitBounds(latLngBounds(points), {
       paddingTopLeft: [32, topPadding ?? 90],
       paddingBottomRight: [32, bottomPadding ?? 90],
+      animate: false,
     })
   }, [map, startPoint, endPoint, normalRoute, safeRoute, topPadding, bottomPadding])
+
+  return null
+}
+
+// dragstart/dragend only fire for user mouse/touch panning, never for
+// programmatic moves like flyTo() — that lets a search-suggestion fly-to
+// settle without re-triggering a reverse-geocode that would clobber the
+// address the suggestion already gave us.
+function CenterTracker({ onDragStart, onCenterChange }) {
+  const map = useMapEvents({
+    dragstart() {
+      onDragStart?.()
+    },
+    dragend() {
+      const center = map.getCenter()
+      onCenterChange?.({ lat: center.lat, lng: center.lng })
+    },
+  })
+  return null
+}
+
+function FlyToTarget({ target }) {
+  const map = useMap()
+
+  useEffect(() => {
+    if (!target) return
+    map.flyTo([target.lat, target.lng], Math.max(map.getZoom(), 16), { duration: 0.6 })
+  }, [target, map])
 
   return null
 }
@@ -111,32 +170,7 @@ function MapView({
         url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
         attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
       />
-      {floodZones &&
-        floodZones.features.map((zone, i) => {
-          const { level, depth } = severityLabel(zone.properties?.state ?? 1)
-          const { center, radiusMeters } = zoneCenterAndRadius(zone)
-          return (
-            <Fragment key={`${floodZones.features.length}-${i}`}>
-              {RADAR_RINGS.map((ring) => (
-                <Circle
-                  key={ring.scale}
-                  center={center}
-                  radius={radiusMeters * ring.scale}
-                  pathOptions={{ stroke: false, fillColor: '#FF4444', fillOpacity: ring.opacity }}
-                />
-              ))}
-              <Marker position={center} icon={radarPingIcon} />
-              <GeoJSON data={zone} style={{ stroke: false, fillOpacity: 0 }}>
-                <Tooltip permanent direction="top" className="arus-flood-tooltip" offset={[0, -6]}>
-                  <span className="arus-flood-tooltip-inner">
-                    LVL: {level}
-                    <br />({depth})
-                  </span>
-                </Tooltip>
-              </GeoJSON>
-            </Fragment>
-          )
-        })}
+      <FloodZoneLayers floodZones={floodZones} />
       {startPoint && <Marker position={[startPoint.lat, startPoint.lng]} icon={startIcon} />}
       {endPoint && <Marker position={[endPoint.lat, endPoint.lng]} icon={endIcon} />}
       {showNormalDashed && (
@@ -164,6 +198,25 @@ function MapView({
         topPadding={fitBoundsTopPadding}
         bottomPadding={fitBoundsBottomPadding}
       />
+    </MapContainer>
+  )
+}
+
+export function PinPickerMap({ floodZones, initialCenter, flyToTarget, onDragStart, onCenterChange }) {
+  return (
+    <MapContainer
+      center={initialCenter}
+      zoom={16}
+      zoomControl={false}
+      style={{ height: '100%', width: '100%', background: '#e5e9e6' }}
+    >
+      <TileLayer
+        url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+        attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
+      />
+      <FloodZoneLayers floodZones={floodZones} />
+      <CenterTracker onDragStart={onDragStart} onCenterChange={onCenterChange} />
+      <FlyToTarget target={flyToTarget} />
     </MapContainer>
   )
 }
