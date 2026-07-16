@@ -39,11 +39,15 @@ Single `App.jsx` holds top-level state: `startPoint`, `endPoint`, `floodZones`,
   The live response is `{ statusCode, result: { type: "FeatureCollection",
   features: [...] } }` (verified live) — the function unwraps `.result` and
   returns that FeatureCollection. Feature geometries are `MultiPolygon`
-  with a top-level `properties.state`. On network error, non-2xx, or CORS
-  failure, falls back to the bundled `src/data/seedFloods.json` (already
-  present in the repo). This fallback is load-bearing, not cosmetic: live
-  tested, the real API currently returns only a single flood report for
-  all of Jakarta, so the seed data is what makes the demo showable.
+  with a top-level `properties.state`. The bundled `src/data/seedFloods.json`
+  features are ALWAYS included in the result; live features are appended
+  when the fetch succeeds. This is a merge, not a fallback: live tested,
+  PetaBencana's CORS is open (`access-control-allow-origin: *`) so the live
+  call reliably succeeds, but right now it returns only a single flood
+  report far from the curated seed zones (Kampung Melayu, etc.) —
+  fallback-only-on-failure would mean the demo's flood-avoidance scenario
+  silently disappears whenever the live API responds with real data.
+  Merging guarantees the curated zones are always present.
 - **`routeApi.js`** — `getRoute(points)`: calls OSRM
   `https://router.project-osrm.org/route/v1/foot/{lng1},{lat1};...;{lngN},{latN}?overview=full&geometries=geojson`
   where `points` is an array of 2+ `{lat, lng}` stops (start, optional via
@@ -81,8 +85,8 @@ Single `App.jsx` holds top-level state: `startPoint`, `endPoint`, `floodZones`,
 
 ### Error Handling
 
-- PetaBencana fetch fails → fall back to `seedFloods.json` silently (no user
-  facing error — the seed data is a legitimate stand-in for the demo).
+- PetaBencana fetch fails → seed zones alone are used, silently (no user
+  facing error — the seed data is always present regardless of live status).
 - OSRM fetch fails → inline error message near the route button; no route
   drawn.
 - Normal route doesn't cross any flood zone → it IS the safe route; drawn
