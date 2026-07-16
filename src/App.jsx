@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import * as turf from '@turf/turf'
 import './App.css'
 import MapView from './components/MapView.jsx'
@@ -145,7 +144,7 @@ function HomeScreen({
       <div className="input-card">
         <LocationInput
           icon={<span className="input-icon input-icon--start" />}
-          placeholder="Start location"
+          placeholder="Start, e.g. Kebon Baru, Tebet"
           text={startText}
           onChange={onStartChange}
           suggestions={startSuggestions}
@@ -156,7 +155,7 @@ function HomeScreen({
         <div className="input-divider" />
         <LocationInput
           icon={<span className="input-icon input-icon--end" />}
-          placeholder="Destination"
+          placeholder="Destination, e.g. Kayu Manis, Matraman"
           text={endText}
           onChange={onEndChange}
           suggestions={endSuggestions}
@@ -221,13 +220,17 @@ function MapScreen({
 
   return (
     <div className="screen map-screen">
-      <MapView
-        floodZones={floodZones}
-        startPoint={startPoint}
-        endPoint={endPoint}
-        normalRoute={normalRoute}
-        safeRoute={safeRoute}
-      />
+      <div className="map-canvas">
+        <MapView
+          floodZones={floodZones}
+          startPoint={startPoint}
+          endPoint={endPoint}
+          normalRoute={normalRoute}
+          safeRoute={safeRoute}
+          fitBoundsTopPadding={90}
+          fitBoundsBottomPadding={260}
+        />
+      </div>
 
       <button type="button" className="back-fab" onClick={onBack} aria-label="Back">
         ←
@@ -326,14 +329,18 @@ function NavigatingScreen({
 
   return (
     <div className="screen nav-screen">
-      <MapView
-        floodZones={floodZones}
-        startPoint={startPoint}
-        endPoint={endPoint}
-        normalRoute={normalRoute}
-        safeRoute={safeRoute}
-        navigating
-      />
+      <div className="map-canvas">
+        <MapView
+          floodZones={floodZones}
+          startPoint={startPoint}
+          endPoint={endPoint}
+          normalRoute={normalRoute}
+          safeRoute={safeRoute}
+          navigating
+          fitBoundsTopPadding={routeNeededDetour ? 180 : 110}
+          fitBoundsBottomPadding={130}
+        />
+      </div>
 
       <div className="nav-top">
         <div className="nav-instruction-card">
@@ -466,8 +473,8 @@ function App() {
 
   return (
     <div className="app">
-      {navigationMode === 'home' &&
-        createPortal(
+      <div className="phone-frame">
+        {navigationMode === 'home' && (
           <HomeScreen
             floodZones={floodZones}
             startText={startText}
@@ -484,12 +491,10 @@ function App() {
             isLoading={isLoading}
             routeError={routeError}
             onScan={handleScan}
-          />,
-          document.body
+          />
         )}
 
-      {navigationMode === 'map' &&
-        createPortal(
+        {navigationMode === 'map' && (
           <MapScreen
             floodZones={floodZones}
             startPoint={startPoint}
@@ -501,12 +506,10 @@ function App() {
             anomalyCount={anomalyCount}
             onBack={handleBackToHome}
             onStartNav={handleStartNav}
-          />,
-          document.body
+          />
         )}
 
-      {navigationMode === 'navigating' &&
-        createPortal(
+        {navigationMode === 'navigating' && (
           <NavigatingScreen
             floodZones={floodZones}
             startPoint={startPoint}
@@ -515,9 +518,9 @@ function App() {
             normalRoute={normalRoute}
             routeNeededDetour={routeNeededDetour}
             onClose={handleCloseNav}
-          />,
-          document.body
+          />
         )}
+      </div>
     </div>
   )
 }
