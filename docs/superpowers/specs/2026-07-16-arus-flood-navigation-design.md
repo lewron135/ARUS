@@ -36,28 +36,48 @@ Single `App.jsx` holds top-level state: `startPoint`, `endPoint`, `floodZones`,
   dependency and failure mode we don't need for a demo.
 - **`floodApi.js`** — `getFloodZones()`: fetches
   `https://data.petabencana.id/floods?admin=ID-JK&minimum_state=1&geoformat=geojson`.
-  On network error, non-2xx, or CORS failure, falls back to the bundled
-  `src/data/seedFloods.json` (already present in the repo) so the demo never
-  shows an empty map.
-- **`routeApi.js`** — `getRoutes(start, end)`: calls OSRM
-  `https://router.project-osrm.org/route/v1/foot/{lng1},{lat1};{lng2},{lat2}?overview=full&geometries=geojson&alternatives=true`.
-  Returns the list of candidate route geometries OSRM provides.
-- **`routeAnalysis.js`** — `pickRoutes(candidates, floodZones)`: the first
-  OSRM candidate is always the "normal" route. Walks the remaining
-  candidates and picks the first one whose line does NOT
-  `turf.booleanIntersects` any flood polygon as the "safe" route. If no
-  candidate avoids all flood zones, `safe` is `null` and the UI shows a
-  warning instead of fabricating a route.
+  The live response is `{ statusCode, result: { type: "FeatureCollection",
+  features: [...] } }` (verified live) — the function unwraps `.result` and
+  returns that FeatureCollection. Feature geometries are `MultiPolygon`
+  with a top-level `properties.state`. On network error, non-2xx, or CORS
+  failure, falls back to the bundled `src/data/seedFloods.json` (already
+  present in the repo). This fallback is load-bearing, not cosmetic: live
+  tested, the real API currently returns only a single flood report for
+  all of Jakarta, so the seed data is what makes the demo showable.
+- **`routeApi.js`** — `getRoute(points)`: calls OSRM
+  `https://router.project-osrm.org/route/v1/foot/{lng1},{lat1};...;{lngN},{latN}?overview=full&geometries=geojson`
+  where `points` is an array of 2+ `{lat, lng}` stops (start, optional via
+  points, end). Returns the single route's LineString geometry. **Verified
+  live against the public OSRM server**: `alternatives=true` and
+  `alternatives=<n>` never produce more than one route (tested foot and
+  driving profiles, short and long distances) — the original "pick a
+  flood-free alternative from OSRM" design does not work against this
+  server and has been replaced below.
+- **`safeRoute.js`** — `findSafeRoute(start, end, normalGeometry, floodZones)`:
+  if `normalGeometry` doesn't intersect any flood polygon
+  (`turf.booleanIntersects`), returns it unchanged (no detour needed). If it
+  does, takes the first intersecting flood zone, computes its bounding box
+  (`turf.bbox`), expands it by a small buffer, and tries up to 4 via-point
+  candidates (north/south/east/west of the expanded bbox, at its midpoint
+  on that side) — requesting `getRoute([start, viaPoint, end])` for each and
+  returning the first result that does NOT intersect any flood zone.
+  Verified live: routing via a point just outside a flood zone's bbox
+  produces a genuinely different, real street-following detour. If none of
+  the 4 candidates avoid the flood zone, returns `null` and the UI shows a
+  warning instead of fabricating a safe route.
 
 ### Data Flow
 
 1. User clicks two points on the map → start pin, end pin placed.
 2. User clicks "Find Route".
 3. `floodApi.getFloodZones()` runs (cached after first successful call this
-   session) in parallel with `routeApi.getRoutes()`.
-4. `routeAnalysis.pickRoutes()` determines normal vs. safe route.
+   session) in parallel with `routeApi.getRoute([start, end])` (the normal
+   route).
+4. `safeRoute.findSafeRoute()` determines the safe route, if any, using the
+   via-waypoint detour described above.
 5. Map renders: flood zones as red (`#FF4444`) polygons, normal route as
-   dashed red line, safe route (if found) as solid teal (`#00E5A0`) line.
+   dashed red line, safe route (if found and different from normal) as
+   solid teal (`#00E5A0`) line.
 
 ### Error Handling
 
@@ -65,9 +85,11 @@ Single `App.jsx` holds top-level state: `startPoint`, `endPoint`, `floodZones`,
   facing error — the seed data is a legitimate stand-in for the demo).
 - OSRM fetch fails → inline error message near the route button; no route
   drawn.
-- No flood-free alternative found among OSRM's candidates → warning banner
+- Normal route doesn't cross any flood zone → it IS the safe route; drawn
+  once as solid teal, no dashed line, no detour attempted.
+- All 4 detour candidates still intersect a flood zone → warning banner
   ("No flood-free route found — showing the direct route") and only the
-  normal route is drawn.
+  normal route (dashed red) is drawn.
 
 ## Styling
 
