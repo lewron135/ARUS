@@ -144,7 +144,7 @@ function HomeScreen({
       <div className="input-card">
         <LocationInput
           icon={<span className="input-icon input-icon--start" />}
-          placeholder="Start, e.g. Kebon Baru, Tebet"
+          placeholder="Start, e.g. Cipinang Jaya, Jatinegara"
           text={startText}
           onChange={onStartChange}
           suggestions={startSuggestions}
@@ -155,7 +155,7 @@ function HomeScreen({
         <div className="input-divider" />
         <LocationInput
           icon={<span className="input-icon input-icon--end" />}
-          placeholder="Destination, e.g. Kayu Manis, Matraman"
+          placeholder="Destination, e.g. Cipinang Muara Raya"
           text={endText}
           onChange={onEndChange}
           suggestions={endSuggestions}
@@ -468,7 +468,9 @@ function App() {
 
   const routeNeededDetour = Boolean(normalRoute && safeRoute && safeRoute !== normalRoute)
   const anomalyCount = normalRoute && floodZones
-    ? floodZones.features.filter((zone) => turf.booleanIntersects(turf.feature(normalRoute), zone)).length
+    ? floodZones.features.filter((zone) =>
+        turf.booleanIntersects(turf.buffer(turf.feature(normalRoute), 0.4, { units: 'kilometers' }), zone)
+      ).length
     : 0
 
   return (
