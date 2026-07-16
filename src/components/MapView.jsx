@@ -22,7 +22,21 @@ function ClickHandler({ onMapClick }) {
   return null
 }
 
-function MapView({ floodZones, startPoint, endPoint, onMapClick, normalRoute }) {
+function MapView({
+  floodZones,
+  startPoint,
+  endPoint,
+  onMapClick,
+  normalRoute,
+  safeRoute,
+}) {
+  // findSafeRoute returns the SAME object reference as normalRoute when the
+  // normal route never crossed a flood zone (no detour needed) — in that
+  // case we draw only the teal line, not a redundant dashed-red one under it.
+  const routeNeededDetour = normalRoute && safeRoute !== normalRoute
+  const showNormalDashed = normalRoute && (routeNeededDetour || !safeRoute)
+  const showSafeTeal = Boolean(safeRoute)
+
   return (
     <MapContainer
       center={JAKARTA_CENTER}
@@ -42,10 +56,16 @@ function MapView({ floodZones, startPoint, endPoint, onMapClick, normalRoute }) 
       )}
       {startPoint && <Marker position={[startPoint.lat, startPoint.lng]} />}
       {endPoint && <Marker position={[endPoint.lat, endPoint.lng]} />}
-      {normalRoute && (
+      {showNormalDashed && (
         <Polyline
           positions={toLatLngs(normalRoute)}
           pathOptions={{ color: '#FF4444', weight: 4, dashArray: '8, 8' }}
+        />
+      )}
+      {showSafeTeal && (
+        <Polyline
+          positions={toLatLngs(safeRoute)}
+          pathOptions={{ color: '#00E5A0', weight: 4 }}
         />
       )}
       <ClickHandler onMapClick={onMapClick} />
