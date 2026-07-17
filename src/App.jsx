@@ -9,8 +9,59 @@ import { findSafeRoute } from './lib/safeRoute.js'
 
 const NOMINATIM_SEARCH_URL = 'https://nominatim.openstreetmap.org/search'
 const NOMINATIM_REVERSE_URL = 'https://nominatim.openstreetmap.org/reverse'
+const GEMINI_KEY = import.meta.env.VITE_GEMINI_KEY
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`
 const WALK_SPEED_KMH = 20
 const JAKARTA_CENTER_POINT = { lat: JAKARTA_CENTER[0], lng: JAKARTA_CENTER[1] }
+
+function namesOfZonesNearRoute(routeGeometry, floodZones) {
+  if (!floodZones) return []
+  const buffered = turf.buffer(turf.feature(routeGeometry), 0.4, { units: 'kilometers' })
+  return floodZones.features
+    .filter((zone) => turf.booleanIntersects(buffered, zone))
+    .map((zone) => zone.properties?.name || zone.properties?.parent_name || zone.properties?.area_name || 'Unknown area')
+}
+
+function fallbackInsight(floodZoneNames, safeRouteFound) {
+  if (!safeRouteFound) {
+    return 'No safe route found — consider taking a vehicle to get through the flooded segment.'
+  }
+  if (floodZoneNames.length === 0) {
+    return 'No flood anomalies detected along this route. Clear to proceed.'
+  }
+  return `${floodZoneNames.length} flood zone${floodZoneNames.length > 1 ? 's' : ''} nearby (${floodZoneNames
+    .slice(0, 2)
+    .join(', ')}${floodZoneNames.length > 2 ? '…' : ''}). Safe route is active.`
+}
+
+async function generateAiInsight(floodZoneNames, safeRouteFound) {
+  if (!GEMINI_KEY) return null
+  try {
+    const response = await fetch(GEMINI_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              {
+                text: `You are ARUS, a flood navigation AI for Jakarta. Generate a short urgent radar insight (max 20 words) based on:
+- Flood zones detected: ${floodZoneNames.join(', ') || 'none'}
+- Safe route found: ${safeRouteFound}
+If no safe route, recommend taking a vehicle. Be direct and helpful.`,
+              },
+            ],
+          },
+        ],
+      }),
+    })
+    if (!response.ok) return null
+    const data = await response.json()
+    return data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? null
+  } catch {
+    return null
+  }
+}
 
 function formatDistance(geometry) {
   const km = turf.length(turf.feature(geometry), { units: 'kilometers' })
@@ -450,7 +501,8 @@ function MapScreen({
   safeRoute,
   noSafeRouteFound,
   destinationName,
-  anomalyCount,
+  aiInsight,
+  isInsightLoading,
   isLoading,
   onBack,
   onStartNav,
@@ -479,10 +531,12 @@ function MapScreen({
       </button>
 
       <div className="radar-badge">
-        <span className="radar-badge-title">RADAR ACTIVE</span>
-        <span className="radar-badge-detail">
+        <span className="radar-badge-title">
           <span className="radar-dot" />
-          {anomalyCount} ANOMALY DETECTED
+          AI INSIGHT
+        </span>
+        <span className={`radar-badge-detail${isInsightLoading ? ' radar-badge-detail--loading' : ''}`}>
+          {isInsightLoading ? 'SCANNING…' : aiInsight || 'Awaiting analysis'}
         </span>
       </div>
 
@@ -647,6 +701,8 @@ function App() {
   const [communityReports, setCommunityReports] = useState([])
   const [floodReportPoint, setFloodReportPoint] = useState(null)
   const [floodReportAddress, setFloodReportAddress] = useState('')
+  const [aiInsight, setAiInsight] = useState(null)
+  const [isInsightLoading, setIsInsightLoading] = useState(false)
 
   useEffect(() => {
     getFloodZones().then(setFloodZones)
@@ -671,6 +727,7 @@ function App() {
     setNoSafeRouteFound(false)
     setNormalRoute(null)
     setSafeRoute(null)
+    setAiInsight(null)
     try {
       const normal = await getRoute([start, end])
       setNormalRoute(normal)
@@ -678,6 +735,12 @@ function App() {
       const safe = await findSafeRoute(start, end, normal, floodZones)
       setSafeRoute(safe)
       setNoSafeRouteFound(safe === null)
+
+      setIsInsightLoading(true)
+      const zoneNames = namesOfZonesNearRoute(normal, floodZones)
+      const insight = (await generateAiInsight(zoneNames, safe !== null)) ?? fallbackInsight(zoneNames, safe !== null)
+      setAiInsight(insight)
+      setIsInsightLoading(false)
     } catch (err) {
       setRouteError(err.message)
     } finally {
@@ -772,11 +835,6 @@ function App() {
   }
 
   const routeNeededDetour = Boolean(normalRoute && safeRoute && safeRoute !== normalRoute)
-  const anomalyCount = normalRoute && displayFloodZones
-    ? displayFloodZones.features.filter((zone) =>
-        turf.booleanIntersects(turf.buffer(turf.feature(normalRoute), 0.4, { units: 'kilometers' }), zone)
-      ).length
-    : 0
 
   return (
     <div className="app">
@@ -853,7 +911,8 @@ function App() {
                 safeRoute={safeRoute}
                 noSafeRouteFound={noSafeRouteFound}
                 destinationName={endText}
-                anomalyCount={anomalyCount}
+                aiInsight={aiInsight}
+                isInsightLoading={isInsightLoading}
                 isLoading={isLoading}
                 onBack={handleBackToHome}
                 onStartNav={handleStartNav}

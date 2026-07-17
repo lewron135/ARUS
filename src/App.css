@@ -448,21 +448,25 @@
 .radar-badge {
   position: absolute;
   top: max(16px, env(safe-area-inset-top));
+  left: 90px;
   right: 16px;
   z-index: 10;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 3px;
+  align-items: flex-start;
+  gap: 4px;
   background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(10px);
   border: 1px solid var(--card-border);
   border-radius: 12px;
-  padding: 8px 12px;
+  padding: 9px 12px;
   box-shadow: 0 4px 14px rgba(26, 26, 26, 0.12);
 }
 
 .radar-badge-title {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   font-size: 10.5px;
   font-weight: 700;
   letter-spacing: 0.8px;
@@ -470,12 +474,16 @@
 }
 
 .radar-badge-detail {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--danger);
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text);
+  text-align: left;
+}
+
+.radar-badge-detail--loading {
+  color: var(--text-faint);
+  font-style: italic;
 }
 
 .radar-dot {
