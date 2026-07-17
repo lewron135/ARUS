@@ -2,6 +2,7 @@ import * as turf from '@turf/turf'
 import { getRoute } from '../api/routeApi.js'
 
 const DETOUR_BUFFER_DEGREES = 0.005
+const TOO_LONG_RATIO = 2
 
 function intersectsAnyFloodZone(lineGeometry, floodZones) {
   const line = turf.feature(lineGeometry)
@@ -31,9 +32,16 @@ function detourShelves(zone) {
   ]
 }
 
+function buildResult(geometry, normalGeometry) {
+  const safeDistance = turf.length(turf.feature(geometry), { units: 'kilometers' })
+  const normalDistance = turf.length(turf.feature(normalGeometry), { units: 'kilometers' })
+  const tooLong = normalDistance > 0 && safeDistance / normalDistance > TOO_LONG_RATIO
+  return { geometry, tooLong }
+}
+
 export async function findSafeRoute(start, end, normalGeometry, floodZones) {
   if (!intersectsAnyFloodZone(normalGeometry, floodZones)) {
-    return normalGeometry
+    return buildResult(normalGeometry, normalGeometry)
   }
 
   const zone = findIntersectingZone(normalGeometry, floodZones)
@@ -42,7 +50,7 @@ export async function findSafeRoute(start, end, normalGeometry, floodZones) {
     try {
       const candidateGeometry = await getRoute([start, ...viaPoints, end])
       if (!intersectsAnyFloodZone(candidateGeometry, floodZones)) {
-        return candidateGeometry
+        return buildResult(candidateGeometry, normalGeometry)
       }
     } catch {
       // OSRM couldn't route through these via points (e.g. over water/inaccessible) — try the next shelf.

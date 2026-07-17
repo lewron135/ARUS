@@ -14,6 +14,15 @@ const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemi
 const WALK_SPEED_KMH = 20
 const JAKARTA_CENTER_POINT = { lat: JAKARTA_CENTER[0], lng: JAKARTA_CENTER[1] }
 
+// Verified via curl against the OSRM foot API: a ~1.16km walk that crosses
+// the CRITICAL Kampung Melayu zone dead-center. At this trip length the
+// detour-shelf buffer (500m) dominates and no shelf clears the zone, so
+// this reliably demos the "no safe route — take a vehicle" path.
+const DEMO_START = { lat: -6.2204, lng: 106.8623 }
+const DEMO_END = { lat: -6.2166, lng: 106.8623 }
+const DEMO_START_NAME = 'Jalan Kampung Melayu Kecil I'
+const DEMO_END_NAME = 'Jalan Inspeksi Ciliwung'
+
 function namesOfZonesNearRoute(routeGeometry, floodZones) {
   if (!floodZones) return []
   const buffered = turf.buffer(turf.feature(routeGeometry), 0.4, { units: 'kilometers' })
@@ -22,9 +31,12 @@ function namesOfZonesNearRoute(routeGeometry, floodZones) {
     .map((zone) => zone.properties?.name || zone.properties?.parent_name || zone.properties?.area_name || 'Unknown area')
 }
 
-function fallbackInsight(floodZoneNames, safeRouteFound) {
+function fallbackInsight(floodZoneNames, safeRouteFound, detourTooLong) {
   if (!safeRouteFound) {
     return 'No safe route found — consider taking a vehicle to get through the flooded segment.'
+  }
+  if (detourTooLong) {
+    return 'Safe detour is significantly longer than your direct route. Flooding is severe. We recommend taking a vehicle instead.'
   }
   if (floodZoneNames.length === 0) {
     return 'No flood anomalies detected along this route. Clear to proceed.'
@@ -34,7 +46,7 @@ function fallbackInsight(floodZoneNames, safeRouteFound) {
     .join(', ')}${floodZoneNames.length > 2 ? '…' : ''}). Safe route is active.`
 }
 
-async function generateAiInsight(floodZoneNames, safeRouteFound) {
+async function generateAiInsight(floodZoneNames, safeRouteFound, detourTooLong) {
   if (!GEMINI_KEY) return null
   try {
     const response = await fetch(GEMINI_URL, {
@@ -48,7 +60,8 @@ async function generateAiInsight(floodZoneNames, safeRouteFound) {
                 text: `You are ARUS, a flood navigation AI for Jakarta. Generate a short urgent radar insight (max 20 words) based on:
 - Flood zones detected: ${floodZoneNames.join(', ') || 'none'}
 - Safe route found: ${safeRouteFound}
-If no safe route, recommend taking a vehicle. Be direct and helpful.`,
+- Detour significantly longer than direct route: ${detourTooLong}
+If no safe route, recommend taking a vehicle. If the detour is significantly longer, say flooding is severe and recommend taking a vehicle instead. Be direct and helpful.`,
               },
             ],
           },
@@ -503,9 +516,11 @@ function MapScreen({
   destinationName,
   aiInsight,
   isInsightLoading,
+  detourTooLong,
   isLoading,
   onBack,
   onStartNav,
+  onTryDemoRoute,
 }) {
   const routeNeededDetour = normalRoute && safeRoute && safeRoute !== normalRoute
   const primaryRoute = safeRoute ?? normalRoute
@@ -528,6 +543,10 @@ function MapScreen({
 
       <button type="button" className="back-fab" onClick={onBack} aria-label="Back">
         ←
+      </button>
+
+      <button type="button" className="demo-route-button" onClick={onTryDemoRoute}>
+        Try Demo Route
       </button>
 
       <div className="radar-badge">
@@ -593,7 +612,7 @@ function MapScreen({
               </svg>
               START NAV
             </button>
-            <button type="button" className="ride-button">
+            <button type="button" className={`ride-button${detourTooLong ? ' ride-button--highlight' : ''}`}>
               🛵 Ride <span className="ride-api-tag">API</span>
             </button>
           </div>
@@ -703,6 +722,8 @@ function App() {
   const [floodReportAddress, setFloodReportAddress] = useState('')
   const [aiInsight, setAiInsight] = useState(null)
   const [isInsightLoading, setIsInsightLoading] = useState(false)
+  const [detourTooLong, setDetourTooLong] = useState(false)
+  const scanToken = useRef(0)
 
   useEffect(() => {
     getFloodZones().then(setFloodZones)
@@ -722,35 +743,55 @@ function App() {
   }, [floodZones, communityReports])
 
   async function runScan(start, end) {
+    // A newer scan (e.g. the demo-route button right after a manual scan)
+    // can start while this one's still awaiting OSRM/Gemini — this token
+    // makes a stale scan's late-arriving result a no-op instead of
+    // clobbering whatever the newer scan already rendered.
+    const token = ++scanToken.current
     setIsLoading(true)
     setRouteError(null)
     setNoSafeRouteFound(false)
     setNormalRoute(null)
     setSafeRoute(null)
     setAiInsight(null)
+    setDetourTooLong(false)
     try {
       const normal = await getRoute([start, end])
+      if (scanToken.current !== token) return
       setNormalRoute(normal)
 
       const safe = await findSafeRoute(start, end, normal, floodZones)
-      setSafeRoute(safe)
+      if (scanToken.current !== token) return
+      setSafeRoute(safe ? safe.geometry : null)
       setNoSafeRouteFound(safe === null)
+      const tooLong = safe ? safe.tooLong : false
+      setDetourTooLong(tooLong)
 
       setIsInsightLoading(true)
       const zoneNames = namesOfZonesNearRoute(normal, floodZones)
-      const insight = (await generateAiInsight(zoneNames, safe !== null)) ?? fallbackInsight(zoneNames, safe !== null)
+      const insight =
+        (await generateAiInsight(zoneNames, safe !== null, tooLong)) ?? fallbackInsight(zoneNames, safe !== null, tooLong)
+      if (scanToken.current !== token) return
       setAiInsight(insight)
       setIsInsightLoading(false)
     } catch (err) {
-      setRouteError(err.message)
+      if (scanToken.current === token) setRouteError(err.message)
     } finally {
-      setIsLoading(false)
+      if (scanToken.current === token) setIsLoading(false)
     }
   }
 
   function handleScan() {
     setNavigationMode('map')
     runScan(startPoint, endPoint)
+  }
+
+  function handleTryDemoRoute() {
+    setStartPoint(DEMO_START)
+    setStartText(DEMO_START_NAME)
+    setEndPoint(DEMO_END)
+    setEndText(DEMO_END_NAME)
+    runScan(DEMO_START, DEMO_END)
   }
 
   function handleOpenStartPicker() {
@@ -913,9 +954,11 @@ function App() {
                 destinationName={endText}
                 aiInsight={aiInsight}
                 isInsightLoading={isInsightLoading}
+                detourTooLong={detourTooLong}
                 isLoading={isLoading}
                 onBack={handleBackToHome}
                 onStartNav={handleStartNav}
+                onTryDemoRoute={handleTryDemoRoute}
               />
             )}
 
