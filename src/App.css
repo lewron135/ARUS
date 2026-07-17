@@ -76,17 +76,32 @@
 
 .home-header {
   display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.home-logo {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  flex-shrink: 0;
+}
+
+.home-header-text {
+  display: flex;
   flex-direction: column;
   gap: 2px;
-  margin-bottom: 4px;
+  min-width: 0;
 }
 
 .app-title {
   margin: 0;
-  font-size: 40px;
+  font-size: 36px;
   font-weight: 800;
   letter-spacing: -0.5px;
   color: var(--text);
+  line-height: 1;
 }
 
 .app-subtitle {
@@ -95,6 +110,13 @@
   letter-spacing: 1.5px;
   color: var(--accent);
   text-transform: uppercase;
+}
+
+.section-heading {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 800;
+  color: var(--text);
 }
 
 .status-card {

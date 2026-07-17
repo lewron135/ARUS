@@ -296,11 +296,14 @@ function HomeScreen({
   return (
     <div className="screen home-screen">
       <div className="home-header">
-        <h1 className="app-title">ARUS</h1>
-        <span className="app-subtitle">URBAN SURVIVAL SYSTEM // JKT</span>
+        <img src="/logo.svg" alt="" className="home-logo" />
+        <div className="home-header-text">
+          <h1 className="app-title">ARUS</h1>
+          <span className="app-subtitle">URBAN SURVIVAL SYSTEM // JKT</span>
+        </div>
       </div>
 
-      <CityStatusCard floodZones={floodZones} />
+      <h2 className="section-heading">Where you heading?</h2>
 
       <div className="input-card">
         <button type="button" className="location-row" onClick={onOpenStartPicker}>
@@ -328,6 +331,8 @@ function HomeScreen({
         {isLoading ? 'SCANNING…' : 'SCAN SAFE ROUTES'}
       </button>
 
+      <CityStatusCard floodZones={floodZones} />
+
       <div className="mini-cards">
         <div className="mini-card">
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none">
@@ -339,7 +344,7 @@ function HomeScreen({
             <circle cx="12" cy="10" r="2.4" stroke="#1A1A1A" strokeWidth="1.6" />
           </svg>
           <span className="mini-card-title">Pin Flood Area</span>
-          <span className="mini-card-tag">+50 PTS</span>
+          <span className="mini-card-tag">COMMUNITY REPORT</span>
         </div>
         <div className="mini-card">
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none">
