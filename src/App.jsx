@@ -66,10 +66,36 @@ async function reverseGeocode(point) {
   }
 }
 
+function areaSeverity(state) {
+  if (state >= 3) return { label: 'CRITICAL', tier: 'critical' }
+  if (state === 2) return { label: 'MODERATE', tier: 'moderate' }
+  return { label: 'LOW', tier: 'low' }
+}
+
+// PetaBencana reports at RT level (area_name) inside a kelurahan
+// (parent_name) — RT names alone aren't recognizable, so prefer the
+// kelurahan/seed name and collapse duplicates to their worst severity.
+function affectedAreas(floodZones) {
+  if (!floodZones) return []
+  const worstByName = new Map()
+  for (const feature of floodZones.features) {
+    const props = feature.properties ?? {}
+    const name = props.name || props.parent_name || props.area_name || 'Unknown area'
+    const state = props.state ?? 1
+    if (!worstByName.has(name) || state > worstByName.get(name)) {
+      worstByName.set(name, state)
+    }
+  }
+  return [...worstByName.entries()]
+    .map(([name, state]) => ({ name, state }))
+    .sort((a, b) => b.state - a.state)
+}
+
 function CityStatusCard({ floodZones }) {
-  const criticalCount = floodZones
-    ? floodZones.features.filter((f) => (f.properties?.state ?? 1) >= 3).length
-    : 0
+  const areas = affectedAreas(floodZones)
+  const criticalCount = areas.filter((a) => a.state >= 3).length
+  const visibleAreas = areas.slice(0, 3)
+  const remaining = areas.length - visibleAreas.length
   const [now] = useState(() =>
     new Date().toLocaleTimeString('en-GB', {
       timeZone: 'Asia/Jakarta',
@@ -81,23 +107,45 @@ function CityStatusCard({ floodZones }) {
 
   return (
     <div className="status-card">
-      <svg className="status-card-icon" viewBox="0 0 24 24" fill="none">
-        <path
-          d="M2 12h4l2-7 4 14 3-9 2 5h5"
-          stroke="#FF4444"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-      <div className="status-card-body">
-        <span className="status-card-label">CITY STATUS</span>
-        <span className="status-card-value">{criticalCount} Critical Flood Zones</span>
+      <div className="status-card-top">
+        <svg className="status-card-icon" viewBox="0 0 24 24" fill="none">
+          <path
+            d="M2 12h4l2-7 4 14 3-9 2 5h5"
+            stroke="#FF4444"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+        <div className="status-card-body">
+          <span className="status-card-label">CITY STATUS</span>
+          <span className="status-card-value">{criticalCount} Critical Flood Zones</span>
+        </div>
+        <div className="status-card-meta">
+          <span className="status-card-time">{now} WIB</span>
+          <span className="status-card-sync">SYNC: GOV DATA</span>
+        </div>
       </div>
-      <div className="status-card-meta">
-        <span className="status-card-time">{now} WIB</span>
-        <span className="status-card-sync">SYNC: GOV DATA</span>
-      </div>
+
+      {visibleAreas.length > 0 && (
+        <div className="status-area-list">
+          {visibleAreas.map((area) => {
+            const severity = areaSeverity(area.state)
+            return (
+              <div className="status-area-row" key={area.name}>
+                <span className={`status-area-dot status-area-dot--${severity.tier}`} />
+                <span className="status-area-name">{area.name}</span>
+                <span className={`status-area-badge status-area-badge--${severity.tier}`}>{severity.label}</span>
+              </div>
+            )
+          })}
+          {remaining > 0 && (
+            <span className="status-area-more">
+              +{remaining} more area{remaining > 1 ? 's' : ''}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   )
 }
