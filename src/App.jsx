@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import * as turf from '@turf/turf'
 import './App.css'
 import MapView, { JAKARTA_CENTER, PinPickerMap } from './components/MapView.jsx'
+import SplashScreen from './components/SplashScreen.jsx'
 import { getFloodZones } from './api/floodApi.js'
 import { getRoute } from './api/routeApi.js'
 import { findSafeRoute } from './lib/safeRoute.js'
@@ -506,9 +507,15 @@ function App() {
   const [isLoading, setIsLoading] = useState(false)
   const [routeError, setRouteError] = useState(null)
   const [navigationMode, setNavigationMode] = useState('home')
+  const [showSplash, setShowSplash] = useState(true)
 
   useEffect(() => {
     getFloodZones().then(setFloodZones)
+  }, [])
+
+  useEffect(() => {
+    const timer = setTimeout(() => setShowSplash(false), 2500)
+    return () => clearTimeout(timer)
   }, [])
 
   async function runScan(start, end) {
@@ -594,70 +601,76 @@ function App() {
   return (
     <div className="app">
       <div className="phone-frame">
-        {navigationMode === 'home' && (
-          <HomeScreen
-            floodZones={floodZones}
-            startText={startText}
-            endText={endText}
-            onOpenStartPicker={handleOpenStartPicker}
-            onOpenEndPicker={handleOpenEndPicker}
-            canScan={Boolean(startPoint && endPoint)}
-            isLoading={isLoading}
-            routeError={routeError}
-            onScan={handleScan}
-          />
-        )}
+        {showSplash ? (
+          <SplashScreen />
+        ) : (
+          <>
+            {navigationMode === 'home' && (
+              <HomeScreen
+                floodZones={floodZones}
+                startText={startText}
+                endText={endText}
+                onOpenStartPicker={handleOpenStartPicker}
+                onOpenEndPicker={handleOpenEndPicker}
+                canScan={Boolean(startPoint && endPoint)}
+                isLoading={isLoading}
+                routeError={routeError}
+                onScan={handleScan}
+              />
+            )}
 
-        {navigationMode === 'pin-start' && (
-          <PinPickerScreen
-            target="start"
-            floodZones={floodZones}
-            initialPoint={startPoint}
-            initialAddress={startText}
-            defaultCenter={startPoint}
-            onConfirm={handlePinConfirm}
-            onBack={handlePinBack}
-          />
-        )}
+            {navigationMode === 'pin-start' && (
+              <PinPickerScreen
+                target="start"
+                floodZones={floodZones}
+                initialPoint={startPoint}
+                initialAddress={startText}
+                defaultCenter={startPoint}
+                onConfirm={handlePinConfirm}
+                onBack={handlePinBack}
+              />
+            )}
 
-        {navigationMode === 'pin-end' && (
-          <PinPickerScreen
-            target="end"
-            floodZones={floodZones}
-            initialPoint={endPoint}
-            initialAddress={endText}
-            defaultCenter={endPoint ?? startPoint}
-            onConfirm={handlePinConfirm}
-            onBack={handlePinBack}
-          />
-        )}
+            {navigationMode === 'pin-end' && (
+              <PinPickerScreen
+                target="end"
+                floodZones={floodZones}
+                initialPoint={endPoint}
+                initialAddress={endText}
+                defaultCenter={endPoint ?? startPoint}
+                onConfirm={handlePinConfirm}
+                onBack={handlePinBack}
+              />
+            )}
 
-        {navigationMode === 'map' && (
-          <MapScreen
-            floodZones={floodZones}
-            startPoint={startPoint}
-            endPoint={endPoint}
-            normalRoute={normalRoute}
-            safeRoute={safeRoute}
-            noSafeRouteFound={noSafeRouteFound}
-            destinationName={endText}
-            anomalyCount={anomalyCount}
-            isLoading={isLoading}
-            onBack={handleBackToHome}
-            onStartNav={handleStartNav}
-          />
-        )}
+            {navigationMode === 'map' && (
+              <MapScreen
+                floodZones={floodZones}
+                startPoint={startPoint}
+                endPoint={endPoint}
+                normalRoute={normalRoute}
+                safeRoute={safeRoute}
+                noSafeRouteFound={noSafeRouteFound}
+                destinationName={endText}
+                anomalyCount={anomalyCount}
+                isLoading={isLoading}
+                onBack={handleBackToHome}
+                onStartNav={handleStartNav}
+              />
+            )}
 
-        {navigationMode === 'navigating' && (
-          <NavigatingScreen
-            floodZones={floodZones}
-            startPoint={startPoint}
-            endPoint={endPoint}
-            safeRoute={safeRoute}
-            normalRoute={normalRoute}
-            routeNeededDetour={routeNeededDetour}
-            onClose={handleCloseNav}
-          />
+            {navigationMode === 'navigating' && (
+              <NavigatingScreen
+                floodZones={floodZones}
+                startPoint={startPoint}
+                endPoint={endPoint}
+                safeRoute={safeRoute}
+                normalRoute={normalRoute}
+                routeNeededDetour={routeNeededDetour}
+                onClose={handleCloseNav}
+              />
+            )}
+          </>
         )}
       </div>
     </div>
