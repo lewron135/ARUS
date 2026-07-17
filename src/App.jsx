@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import * as turf from '@turf/turf'
 import './App.css'
 import MapView, { JAKARTA_CENTER, PinPickerMap } from './components/MapView.jsx'
@@ -246,7 +246,13 @@ function PinPickerScreen({ target, floodZones, initialPoint, initialAddress, def
           <input
             type="text"
             className="pin-search-input"
-            placeholder={target === 'start' ? 'Search start location' : 'Search destination'}
+            placeholder={
+              target === 'start'
+                ? 'Search start location'
+                : target === 'end'
+                ? 'Search destination'
+                : 'Search flood location'
+            }
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -265,7 +271,9 @@ function PinPickerScreen({ target, floodZones, initialPoint, initialAddress, def
       </div>
 
       <div className="pin-bottom">
-        <span className="pin-bottom-label">{target === 'start' ? 'TITIK AWAL' : 'TITIK TUJUAN'}</span>
+        <span className="pin-bottom-label">
+          {target === 'start' ? 'TITIK AWAL' : target === 'end' ? 'TITIK TUJUAN' : 'TITIK BANJIR'}
+        </span>
         <span className="pin-bottom-address">
           {isResolving ? 'Detecting address…' : address || 'Drag the map to pin your location'}
         </span>
@@ -275,7 +283,81 @@ function PinPickerScreen({ target, floodZones, initialPoint, initialAddress, def
           disabled={!pinPoint || isResolving}
           onClick={handleConfirm}
         >
-          Confirm Location
+          {target === 'flood' ? 'Confirm Flood Location' : 'Confirm Location'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+const REPORT_SEVERITY_OPTIONS = [
+  { state: 1, label: 'LOW', depth: '10-20cm' },
+  { state: 2, label: 'MODERATE', depth: '20-40cm' },
+  { state: 3, label: 'CRITICAL', depth: '40-60cm' },
+]
+
+function FloodReportScreen({ address, onSubmit, onDone }) {
+  const [severity, setSeverity] = useState(null)
+  const [note, setNote] = useState('')
+  const [submitted, setSubmitted] = useState(false)
+
+  function handleSubmit() {
+    if (!severity) return
+    onSubmit(severity, note.trim())
+    setSubmitted(true)
+    setTimeout(onDone, 1400)
+  }
+
+  if (submitted) {
+    return (
+      <div className="screen report-screen">
+        <div className="report-success">
+          <div className="report-success-icon">✓</div>
+          <span className="report-success-title">Report Submitted</span>
+          <span className="report-success-desc">Thanks — this helps others avoid the area.</span>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="screen report-screen">
+      <button type="button" className="back-fab" onClick={onDone} aria-label="Back">
+        ←
+      </button>
+
+      <div className="report-body">
+        <span className="report-label">REPORTING FLOOD AT</span>
+        <span className="report-address">{address || 'Selected location'}</span>
+
+        <span className="report-field-label">Water level</span>
+        <div className="severity-picker">
+          {REPORT_SEVERITY_OPTIONS.map((opt) => (
+            <button
+              key={opt.state}
+              type="button"
+              className={`severity-option severity-option--${opt.label.toLowerCase()}${
+                severity === opt.state ? ' severity-option--active' : ''
+              }`}
+              onClick={() => setSeverity(opt.state)}
+            >
+              <span className="severity-option-label">{opt.label}</span>
+              <span className="severity-option-depth">{opt.depth}</span>
+            </button>
+          ))}
+        </div>
+
+        <span className="report-field-label">Details (optional)</span>
+        <textarea
+          className="report-note-input"
+          placeholder="e.g. Genangan setinggi lutut di depan gang"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          rows={3}
+        />
+
+        <button type="button" className="scan-button" disabled={!severity} onClick={handleSubmit}>
+          SEND REPORT
         </button>
       </div>
     </div>
@@ -288,6 +370,7 @@ function HomeScreen({
   endText,
   onOpenStartPicker,
   onOpenEndPicker,
+  onOpenFloodPicker,
   canScan,
   isLoading,
   routeError,
@@ -334,7 +417,7 @@ function HomeScreen({
       <CityStatusCard floodZones={floodZones} />
 
       <div className="mini-cards">
-        <div className="mini-card">
+        <button type="button" className="mini-card" onClick={onOpenFloodPicker}>
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none">
             <path
               d="M12 21s-7-6.1-7-11a7 7 0 1 1 14 0c0 4.9-7 11-7 11z"
@@ -345,7 +428,7 @@ function HomeScreen({
           </svg>
           <span className="mini-card-title">Pin Flood Area</span>
           <span className="mini-card-tag">COMMUNITY REPORT</span>
-        </div>
+        </button>
         <div className="mini-card">
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none">
             <circle cx="12" cy="12" r="9" stroke="#1A1A1A" strokeWidth="1.6" />
@@ -561,6 +644,9 @@ function App() {
   const [routeError, setRouteError] = useState(null)
   const [navigationMode, setNavigationMode] = useState('home')
   const [showSplash, setShowSplash] = useState(true)
+  const [communityReports, setCommunityReports] = useState([])
+  const [floodReportPoint, setFloodReportPoint] = useState(null)
+  const [floodReportAddress, setFloodReportAddress] = useState('')
 
   useEffect(() => {
     getFloodZones().then(setFloodZones)
@@ -570,6 +656,14 @@ function App() {
     const timer = setTimeout(() => setShowSplash(false), 2500)
     return () => clearTimeout(timer)
   }, [])
+
+  // Community reports only live in memory (no backend) — merge them into
+  // the fetched zones so every screen (map, radar count, city status)
+  // treats a just-submitted report the same as an official one.
+  const displayFloodZones = useMemo(() => {
+    if (!floodZones || communityReports.length === 0) return floodZones
+    return { ...floodZones, features: [...floodZones.features, ...communityReports] }
+  }, [floodZones, communityReports])
 
   async function runScan(start, end) {
     setIsLoading(true)
@@ -604,6 +698,10 @@ function App() {
     setNavigationMode('pin-end')
   }
 
+  function handleOpenFloodPicker() {
+    setNavigationMode('pin-flood')
+  }
+
   function handlePinBack() {
     setNavigationMode('home')
   }
@@ -613,6 +711,13 @@ function App() {
   // pickup -> destination -> route flow) — this fires whichever picker was
   // just confirmed, including re-edits of an already-complete pair.
   function handlePinConfirm(point, address) {
+    if (navigationMode === 'pin-flood') {
+      setFloodReportPoint(point)
+      setFloodReportAddress(address)
+      setNavigationMode('report-flood')
+      return
+    }
+
     const wasStart = navigationMode === 'pin-start'
     const otherPoint = wasStart ? endPoint : startPoint
 
@@ -632,6 +737,28 @@ function App() {
     }
   }
 
+  function handleSubmitFloodReport(severity, note) {
+    if (!floodReportPoint) return
+    const zone = turf.circle([floodReportPoint.lng, floodReportPoint.lat], 0.06, {
+      steps: 24,
+      units: 'kilometers',
+    })
+    zone.properties = {
+      name: floodReportAddress || 'Community report',
+      state: severity,
+      source: 'community',
+      updated: new Date().toISOString(),
+      ...(note ? { note } : {}),
+    }
+    setCommunityReports((prev) => [...prev, zone])
+  }
+
+  function handleFloodReportDone() {
+    setFloodReportPoint(null)
+    setFloodReportAddress('')
+    setNavigationMode('home')
+  }
+
   function handleBackToHome() {
     setNavigationMode('home')
   }
@@ -645,8 +772,8 @@ function App() {
   }
 
   const routeNeededDetour = Boolean(normalRoute && safeRoute && safeRoute !== normalRoute)
-  const anomalyCount = normalRoute && floodZones
-    ? floodZones.features.filter((zone) =>
+  const anomalyCount = normalRoute && displayFloodZones
+    ? displayFloodZones.features.filter((zone) =>
         turf.booleanIntersects(turf.buffer(turf.feature(normalRoute), 0.4, { units: 'kilometers' }), zone)
       ).length
     : 0
@@ -660,11 +787,12 @@ function App() {
           <>
             {navigationMode === 'home' && (
               <HomeScreen
-                floodZones={floodZones}
+                floodZones={displayFloodZones}
                 startText={startText}
                 endText={endText}
                 onOpenStartPicker={handleOpenStartPicker}
                 onOpenEndPicker={handleOpenEndPicker}
+                onOpenFloodPicker={handleOpenFloodPicker}
                 canScan={Boolean(startPoint && endPoint)}
                 isLoading={isLoading}
                 routeError={routeError}
@@ -675,7 +803,7 @@ function App() {
             {navigationMode === 'pin-start' && (
               <PinPickerScreen
                 target="start"
-                floodZones={floodZones}
+                floodZones={displayFloodZones}
                 initialPoint={startPoint}
                 initialAddress={startText}
                 defaultCenter={startPoint}
@@ -687,7 +815,7 @@ function App() {
             {navigationMode === 'pin-end' && (
               <PinPickerScreen
                 target="end"
-                floodZones={floodZones}
+                floodZones={displayFloodZones}
                 initialPoint={endPoint}
                 initialAddress={endText}
                 defaultCenter={endPoint ?? startPoint}
@@ -696,9 +824,29 @@ function App() {
               />
             )}
 
+            {navigationMode === 'pin-flood' && (
+              <PinPickerScreen
+                target="flood"
+                floodZones={displayFloodZones}
+                initialPoint={null}
+                initialAddress=""
+                defaultCenter={startPoint ?? endPoint}
+                onConfirm={handlePinConfirm}
+                onBack={handlePinBack}
+              />
+            )}
+
+            {navigationMode === 'report-flood' && (
+              <FloodReportScreen
+                address={floodReportAddress}
+                onSubmit={handleSubmitFloodReport}
+                onDone={handleFloodReportDone}
+              />
+            )}
+
             {navigationMode === 'map' && (
               <MapScreen
-                floodZones={floodZones}
+                floodZones={displayFloodZones}
                 startPoint={startPoint}
                 endPoint={endPoint}
                 normalRoute={normalRoute}
@@ -714,7 +862,7 @@ function App() {
 
             {navigationMode === 'navigating' && (
               <NavigatingScreen
-                floodZones={floodZones}
+                floodZones={displayFloodZones}
                 startPoint={startPoint}
                 endPoint={endPoint}
                 safeRoute={safeRoute}

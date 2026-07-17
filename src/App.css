@@ -401,6 +401,8 @@
   border-radius: 16px;
   padding: 18px 10px;
   box-shadow: 0 1px 2px rgba(26, 26, 26, 0.04);
+  font-family: inherit;
+  cursor: pointer;
 }
 
 .mini-card-title {
@@ -928,6 +930,155 @@
 .pin-marker-shadow--dragging {
   width: 9px;
   opacity: 0.45;
+}
+
+/* ---------- Flood report screen ---------- */
+
+.report-screen {
+  overflow-y: auto;
+  background: var(--bg);
+}
+
+.report-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 76px 18px 28px;
+}
+
+.report-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--text-faint);
+}
+
+.report-address {
+  font-size: 19px;
+  font-weight: 800;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.report-field-label {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.severity-picker {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.severity-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  border: 1.5px solid var(--card-border);
+  border-radius: 12px;
+  background: var(--card);
+  padding: 12px 6px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.severity-option-label {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  color: var(--text);
+}
+
+.severity-option-depth {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.severity-option--active.severity-option--low {
+  border-color: rgba(26, 26, 26, 0.4);
+  background: rgba(26, 26, 26, 0.06);
+}
+
+.severity-option--active.severity-option--moderate {
+  border-color: var(--warn);
+  background: rgba(255, 154, 46, 0.12);
+}
+
+.severity-option--active.severity-option--moderate .severity-option-label {
+  color: var(--warn);
+}
+
+.severity-option--active.severity-option--critical {
+  border-color: var(--danger);
+  background: rgba(255, 68, 68, 0.1);
+}
+
+.severity-option--active.severity-option--critical .severity-option-label {
+  color: var(--danger);
+}
+
+.report-note-input {
+  width: 100%;
+  border: 1px solid var(--card-border);
+  border-radius: 14px;
+  background: var(--card);
+  padding: 12px 14px;
+  font-size: 13.5px;
+  font-family: inherit;
+  color: var(--text);
+  resize: none;
+}
+
+.report-note-input::placeholder {
+  color: var(--text-faint);
+}
+
+.report-note-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.report-success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  height: 100%;
+  text-align: center;
+  padding: 0 32px;
+}
+
+.report-success-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 34px;
+  font-weight: 800;
+  opacity: 0;
+  transform: scale(0.8);
+  animation: arus-splash-logo-in 0.5s ease forwards;
+}
+
+.report-success-title {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.report-success-desc {
+  font-size: 13.5px;
+  color: var(--text-muted);
 }
 
 /* ---------- Leaflet overrides ---------- */
